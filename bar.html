@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>Spotify</title>
+		<link href="style.css" rel="stylesheet" type="text/css" />
+		<script type="text/javascript" src="jquery.1.4.2.min.js"></script>
+		<script src="global.js" type="text/javascript"></script>
+		<script type="text/javascript">
+				
+			// Get music info from Spotify API	
+				
+			safari.application.addEventListener("command", perform, false);
+			var uri;
+			function perform(event){
+				if(event.command === "spotify-lookup"){
+					// If the user is in the search view; scroll back up to the lookup view again.
+					showLookup();
+					$("img#loader").show();
+					type = "track";
+					url = "http://ws.spotify.com/search/1/"+type;
+					// Get the Spotify URI from global.js.
+					uri = encodeURI(getURI(url, type));
+					var lookupURL = "http://ws.spotify.com/lookup/1/";
+					$.ajax({
+						url: lookupURL,
+						data: "uri="+uri,
+						processData: false,
+						success: success
+					});
+					
+					$("img#loader").ajaxComplete(function(){
+						$(this).hide();
+					});
+					if(event.userInfo){
+					// Set the href to the freetext search button
+						$("#freetext-search-button").attr("href", "spotify:search:track%3a%22"+ event.userInfo +"%22");
+					}
+				}
+			}
+			
+			
+			function success(data){
+				getExtensionBar().show();
+				
+				if(data){
+					var track = {
+						name: $(data).find("name").first().text(),
+						album: $(data).find("album name").text(),
+						albumURI: $(data).find("album").attr("href"),
+						artist: $(data).find("artist name").text(),
+						artistURI: $(data).find("artist").attr("href"),
+						trackLength: secondsToTime(parseInt($(data).find("length").text()))
+					}
+					
+					setupControls();
+					$("#track-name")
+					.text('"'+track.name+'" ('+ track.trackLength.m +':'+track.trackLength.s+')')
+					.attr("href", uri)
+					.attr("title", 'open "'+track.name+'" in Spotify');
+					
+					$("#artist-name")
+					.before('<span class="sep">●</span>')
+					.text(track.artist)
+					.attr("href", track.artistURI)
+					.attr("title", "open "+track.artist +" in Spotify");
+					
+					$("#album-name")
+					.before('<span class="sep">●</span>')
+					.text('from the album "'+track.album+'"')
+					.attr("href", track.albumURI)
+					.attr("title", 'open "'+ track.album+'" in Spotify');
+					
+					$("#open-button").attr("href", uri);
+					
+				}else{
+					$("body *").hide();
+				}
+			}
+			
+
+			
+			// Bar UI functions
+			
+			$(function(){
+				var visibility;
+				$("#search-button").toggle(
+					function(){
+						$("#wrapper").addClass("scrolled");
+						visibility = $("#open-button, #freetext-search-button").css("display");
+						hideButtons();
+						$(this).text("Back");
+						setTimeout('$("#search-form input").focus()', 200);
+					},
+					function(){
+						$("#wrapper").removeClass("scrolled");
+						$("#open-button, #freetext-search-button").css("display", visibility);
+						$(this).text("Search");
+					}
+				);
+				
+				$(".search-type").each(function(){
+					$(this).click(function(){
+						$(".search-type").removeClass("toggled");
+						$(this).toggleClass("toggled");
+					});
+				});
+				
+							
+				
+				$("#search-form").submit(function(e){
+					//var type = $("a.search-type.toggled").text().toLowerCase();
+					var type = "track";
+					e.preventDefault();
+					$("img#loader").show();
+					var searchTerm = encodeURI($("input[type='search']").val());
+					url = "http://ws.spotify.com/search/1/"+type;
+					$.ajax({
+						url: url,
+						data: "q="+searchTerm,
+						success: searchSuccess
+					});
+				});
+				
+				var pages;
+				var width = 0;
+				var currentPage = 1;
+				
+				function searchSuccess(data){
+					$("#results").html("");
+					$("img#loader").hide();
+
+					$(data).find("track").each(function(){
+						var name = $(this).find("name").first().text();
+						var uri = $(this).attr("href");
+						var artist = $(this).find("artist name").text();
+						var album = $(this).find("album name").text();
+						var albumDate = $(this).find("album released").text().substring(0, 4);
+						$("#results").append('<a href="'+uri+'" title="'+ artist + ' ('+ albumDate +')">'+name+'</a> |');
+					});
+					// Get number of pages
+					pages = Math.ceil(parseInt($("#results").css("width"))/780);
+					// Make the next button clickable now when we've got some content
+					$("nav span[rel=next]").removeClass("disabled");
+					// Scroll to the first page
+					$("#results").css("-webkit-transform", "translate(0,0)");
+					
+				}
+	
+				
+				$("nav span[rel=prev]").click(function(){
+					if(currentPage > 1){
+						currentPage--;
+						slide(width -= 780);
+					}
+					if(currentPage == 1)	$(this).addClass("disabled");
+				});
+				$("nav span[rel=next]").click(function(){
+					if(currentPage < pages){
+						currentPage++;
+						slide(width += 780);
+					}
+					if(currentPage == pages)	$(this).addClass("disabled");
+				});
+				
+				function slide(width){
+					$("nav span").removeClass("disabled");
+					$("#results").css("-webkit-transform", "translate(-"+width+"px, 0)");
+				}
+				
+					
+			
+				$("nav span#left:not(.disabled)").click(function(){
+					if($("#results").attr("data-position") == 0)	$(this).addClass("disabled");
+					else 	$(this).removeClass("disabled");
+					
+					if(!$(this).hasClass("disabled")){
+						width -= 780;
+						$("#results").css("-webkit-transform", "translate(-"+width+"px, 0)").attr("data-position", width);
+					}
+				});
+				
+			});
+			
+
+			
+			// Helper functions
+			
+			function secondsToTime(secs)
+			{
+				var hours = Math.floor(secs / (60 * 60));
+
+				var divisor_for_minutes = secs % (60 * 60);
+				var minutes = Math.floor(divisor_for_minutes / 60);
+
+				var divisor_for_seconds = divisor_for_minutes % 60;
+				var seconds = Math.ceil(divisor_for_seconds);
+				if(seconds < 10) seconds = "0"+seconds;
+
+				var obj = {
+					h: hours,
+					m: minutes,
+					s: seconds
+				};
+				return obj;
+			}
+
+			function setupControls(){
+				$("#intro").hide();
+				$(".sep").remove();
+				$("a#open-button").show();
+				$("a#freetext-search-button").show();
+			}
+			
+			function hideButtons(){
+				$("#open-button, #freetext-search-button").hide();
+			}
+
+		</script>
+	</head>
+<body>
+<div id="wrapper" class="">
+	<span id="intro">Hi! To begin, right-click on a track or artist and choose "Show music info" | Contact <a href="http://twitter.com/johanbrook" id="contact">Johan</a> if there are issues</span>
+
+	<a title="" id="track-name" href=""></a> <a title="" id="artist-name" href=""></a> <a title="" id="album-name" href=""></a>
+	
+	<div id="search">
+		<form id="search-form">
+			<input type="search" tabindex="0" placeholder="Search" size="30" results="5" />
+		</form>
+		
+		<div id="results-wrapper">
+			<div id="results">
+			
+			</div>
+			
+		</div>
+		<nav>
+			<span rel="prev" class="disabled">◀</span><span rel="next" class="disabled">▶</span>
+		</nav>
+	</div>
+</div>
+	
+	<div id="float-right">
+		<img id="loader" src="loader.gif" alt="Loading..." />
+		<a id="open-button" class="button" title="open the current track in Spotify" href="">Open in Spotify</a>
+		<a id="freetext-search-button" class="button" title="search for more tracks like this one in Spotify" href="">Search in Spotify</a>
+		<a id="search-button" title="Search">Search</a>
+		<a id="close-bar" class="close" onclick="getExtensionBar().hide();"></a>
+	</div>
+</body>
+</html>
